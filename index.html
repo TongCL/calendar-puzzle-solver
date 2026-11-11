@@ -1,0 +1,599 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>每日拼图 · 日历拼图解算器</title>
+<style>
+  :root{
+    --bg:#f7f2e7; --ink:#3a3126; --ink2:#8a7d68; --panel:#fffdf7;
+    --board:#f1e7d2; --board-edge:#c9b88f; --line:#e5dcc8;
+    --cell-ink:#4a4032;
+  }
+  @media (prefers-color-scheme: dark){
+    :root{
+      --bg:#211d18; --ink:#ece4d4; --ink2:#a99a82; --panel:#2a251e;
+      --board:#332c22; --board-edge:#55483a; --line:#3c352b;
+      --cell-ink:#d8cdb8;
+    }
+  }
+  *{box-sizing:border-box}
+  body{
+    margin:0; padding:20px 14px 40px; background:var(--bg); color:var(--ink);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
+    display:flex; flex-direction:column; align-items:center;
+  }
+  .wrap{width:100%; max-width:600px}
+  h1{font-size:24px; margin:0 0 2px; letter-spacing:1px}
+  h1 .en{font-weight:400; font-size:13px; color:var(--ink2); margin-left:8px; letter-spacing:0}
+  .sub{margin:0 0 16px; font-size:13px; color:var(--ink2)}
+  .controls{display:flex; flex-wrap:wrap; gap:8px; align-items:center; margin-bottom:6px}
+  input[type=date]{
+    font:inherit; font-size:16px; padding:7px 10px; border:1px solid var(--board-edge);
+    border-radius:10px; background:var(--panel); color:var(--ink); outline:none;
+  }
+  input[type=date]:focus{border-color:#b0903f; box-shadow:0 0 0 3px rgba(176,144,63,.2)}
+  button{
+    font:inherit; font-size:14px; padding:7px 13px; border-radius:10px; cursor:pointer;
+    border:1px solid var(--board-edge); background:var(--panel); color:var(--ink);
+    transition:transform .05s, background .15s;
+  }
+  button:hover{background:var(--line)}
+  button:active{transform:scale(.96)}
+  button.primary{background:#b0903f; border-color:#b0903f; color:#fff; font-weight:600}
+  button.primary:hover{background:#9c7f35}
+  button:disabled{opacity:.4; cursor:default}
+  .dateline{font-size:15px; font-weight:600; margin:12px 2px 8px}
+  .dateline small{font-weight:400; color:var(--ink2); margin-left:8px}
+  .boardbox{background:var(--panel); border:1px solid var(--line); border-radius:16px; padding:12px; box-shadow:0 3px 14px rgba(60,45,20,.07)}
+  svg{display:block; width:100%; height:auto; user-select:none}
+  .navrow{display:flex; flex-wrap:wrap; gap:8px; align-items:center; justify-content:center; margin-top:12px}
+  .navrow .info{font-size:14px; min-width:110px; text-align:center; font-variant-numeric:tabular-nums}
+  .meta{font-size:12.5px; color:var(--ink2); text-align:center; margin-top:8px}
+  .foot{margin-top:18px; font-size:12.5px; color:var(--ink2); line-height:1.7}
+  .foot b{color:var(--ink); font-weight:600}
+  .opts{display:flex; gap:14px; justify-content:center; margin-top:8px; font-size:13px; color:var(--ink2); flex-wrap:wrap}
+  .opts label{display:flex; gap:5px; align-items:center; cursor:pointer}
+  .err{color:#c0392b; text-align:center; font-size:14px; padding:20px 0}
+  @media (max-width:420px){
+    h1{font-size:20px}
+    input[type=date]{font-size:15px}
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>每日拼图<span class="en">Calendar Puzzle Solver</span></h1>
+  <p class="sub">7×8 日历棋盘 · 10 块拼块 · 选好日期，立刻生成当天的拼法</p>
+
+  <div class="controls">
+    <input type="date" id="dateInput" aria-label="选择日期">
+    <button id="btnToday" class="primary">今天</button>
+    <button id="btnPrevDay">← 前一天</button>
+    <button id="btnNextDay">后一天 →</button>
+  </div>
+
+  <div class="dateline" id="dateline" aria-live="polite"></div>
+
+  <div class="boardbox">
+    <div id="boardHost" role="img" aria-label="拼图棋盘"></div>
+    <div class="navrow">
+      <button id="btnPrevSol" title="上一种拼法">◀ 上一种</button>
+      <span class="info" id="solInfo" aria-live="polite"></span>
+      <button id="btnNextSol" title="下一种拼法">下一种 ▶</button>
+      <button id="btnRand" title="随机换一种">🎲 随机</button>
+    </div>
+    <div class="meta" id="meta"></div>
+    <div class="opts">
+      <label><input type="checkbox" id="chkLabels"> 显示全部格子文字</label>
+      <label><input type="checkbox" id="chkGrid"> 显示块内分隔线</label>
+      <button id="btnPng" style="font-size:12.5px; padding:4px 10px">🖼 保存图片</button>
+    </div>
+  </div>
+
+  <div class="foot">
+    <b>玩法</b>：把 10 块拼块全部放回棋盘，只露出今天的「月份 / 日期 / 星期」三个格子。本页面按经典
+    10 块日历拼图（A-Puzzle-A-Day 及其国内复刻版）的棋盘与拼块计算，允许旋转与翻面，拼法按块着色，照着摆即可。
+    若个别日期显示「极难」，说明当天解法很少，可点「随机」多试几种。
+  </div>
+</div>
+
+<script id="engine-src">
+'use strict';
+/* ================= 棋盘定义 =================
+   8 行 × 7 列；缺角：右上 (0,6)(1,6)，左下 (7,0..3)。
+   行0: 1月..6月      行1: 7月..12月
+   行2..5: 1..28      行6: 29,30,31, 日,一,二,三
+   行7: [缺][缺][缺][缺] 四,五,六             */
+const ROWS=8, COLS=7;
+const removed = new Set([0*COLS+6, 1*COLS+6, 7*COLS+0, 7*COLS+1, 7*COLS+2, 7*COLS+3]);
+
+const validRC=[]; const rc2idx=new Map();
+for(let r=0;r<ROWS;r++)for(let c=0;c<COLS;c++){
+  const k=r*COLS+c;
+  if(!removed.has(k)){ rc2idx.set(k, validRC.length); validRC.push([r,c]); }
+}
+const N=validRC.length;            // 50
+const idxOf=(r,c)=>rc2idx.get(r*COLS+c);
+const NEIGH=validRC.map(([r,c])=>{         // 预计算相邻格（含对角外全部合法邻接）
+  const out=[];
+  for(const [nr,nc] of [[r-1,c],[r+1,c],[r,c-1],[r,c+1]]){
+    if(nr<0||nr>=ROWS||nc<0||nc>=COLS) continue;
+    const u=idxOf(nr,nc); if(u!==undefined) out.push(u);
+  }
+  return out;
+});
+
+function labelOfIdx(i){
+  const [r,c]=validRC[i];
+  if(r===0) return (c+1)+'月';
+  if(r===1) return (c+7)+'月';
+  if(r>=2&&r<=5) return String(r*7+c-13);          // 1..28
+  if(r===6&&c<=2) return String(29+c);
+  return ['日','一','二','三','四','五','六'][r===6 ? c-3 : c]; // 行6:日一二三 行7:四五六
+}
+const WD_POS=[idxOf(6,3),idxOf(6,4),idxOf(6,5),idxOf(6,6),idxOf(7,4),idxOf(7,5),idxOf(7,6)]; // getDay() 0..6
+const WD_TXT=['日','一','二','三','四','五','六'];
+
+function cellsForDate(y,m,d){
+  const monthIdx = m<=6 ? idxOf(0,m-1) : idxOf(1,m-7);
+  const dayIdx   = d<=28 ? idxOf(2+Math.floor((d-1)/7),(d-1)%7) : idxOf(6,d-29);
+  const wd       = new Date(y,m-1,d).getDay();
+  return [monthIdx, dayIdx, WD_POS[wd]];
+}
+
+/* ================= 拼块定义（10 块，共 47 格） ================= */
+const PIECES=[
+  {name:'L角', cells:[[0,0],[0,1],[0,2],[1,0],[2,0]]},   // 3+3 大L
+  {name:'门',  cells:[[0,0],[0,1],[0,2],[1,0],[1,2]]},   // U 形
+  {name:'长L', cells:[[0,0],[0,1],[1,0],[2,0],[3,0]]},   // 4+2 L
+  {name:'长Z', cells:[[0,0],[0,1],[0,2],[1,2],[1,3]]},
+  {name:'T',   cells:[[0,0],[0,1],[0,2],[1,1],[2,1]]},
+  {name:'P',   cells:[[0,0],[1,0],[1,1],[2,0],[2,1]]},
+  {name:'Z',   cells:[[0,0],[0,1],[1,1],[2,1],[2,2]]},
+  {name:'小L', cells:[[0,0],[0,1],[1,0],[2,0]]},
+  {name:'直条',cells:[[0,0],[0,1],[0,2],[0,3]]},
+  {name:'S',   cells:[[0,0],[0,1],[1,1],[1,2]]},
+];
+const PCOLORS=['#e05b5b','#e58f3f','#d2af3d','#6fb56b','#46afa8','#5a8fd9','#9083db','#d97ba6','#9a6b4f','#7b8a99'];
+
+function norm(cells){
+  const mr=Math.min(...cells.map(a=>a[0])), mc=Math.min(...cells.map(a=>a[1]));
+  return cells.map(([r,c])=>[r-mr,c-mc]).sort((a,b)=>a[0]-b[0]||a[1]-b[1]);
+}
+const rot = cs=>norm(cs.map(([r,c])=>[c,-r]));
+const mir = cs=>norm(cs.map(([r,c])=>[r,-c]));
+function orientations(cells){
+  const seen=new Map(); let cur=norm(cells);
+  for(let m=0;m<2;m++){
+    for(let i=0;i<4;i++){ seen.set(JSON.stringify(cur),cur); cur=rot(cur); }
+    cur=mir(norm(cells));
+  }
+  return [...seen.values()];
+}
+
+/* 预生成所有摆放：mask(BigInt)、格子idx数组、锚点(最小idx) */
+const PLACEMENTS=PIECES.map(p=>{
+  const list=[];
+  for(const o of orientations(p.cells)){
+    const maxR=Math.max(...o.map(a=>a[0])), maxC=Math.max(...o.map(a=>a[1]));
+    for(let dr=0; dr+maxR<ROWS; dr++)for(let dc=0; dc+maxC<COLS; dc++){
+      const idxs=o.map(([r,c])=>idxOf(r+dr,c+dc));
+      if(idxs.some(v=>v===undefined)) continue;
+      let lo=0, hi=0;
+      for(const i of idxs){ if(i<25) lo|=(1<<i); else hi|=(1<<(i-25)); }
+      list.push({lo, hi, idxs, anchor:Math.min(...idxs)});
+    }
+  }
+  return list;
+});
+const PSIZE=PIECES.map(p=>p.cells.length);           // [5,5,5,5,5,5,5,4,4,4]
+const TOTAL=PSIZE.reduce((a,b)=>a+b,0);              // 47
+
+/* 剩余拼块能凑出的所有面积（子集和，用于剪枝），按 usedMask 索引 */
+const SUMS=new Array(1<<PIECES.length);
+(function build(){
+  const full=(1<<PIECES.length)-1;
+  const f=used=>{
+    if(SUMS[used]!==undefined) return SUMS[used];
+    let s=1n; // 空子集 → 面积0
+    for(let p=0;p<PIECES.length;p++)
+      if(!((used>>p)&1)) s |= f(used|(1<<p)) << BigInt(PSIZE[p]);
+    return SUMS[used]=s;
+  };
+  f(0); void full;
+})();
+
+/* ================= 求解器 =================
+   位掩码拆成 lo(格0..24) / hi(格25..49) 两个 Number，避免 BigInt 开销 */
+function solveDate(y,m,d,limit=1000,deadlineMs=4000,onPartial=null){
+  const holes=cellsForDate(y,m,d);
+  const holeLo=holes.reduce((a,i)=>i<25 ?a|(1<<i)      :a,0);
+  const holeHi=holes.reduce((a,i)=>i>=25?a|(1<<(i-25)):a,0);
+  const isHole=new Array(N).fill(false); holes.forEach(i=>isHole[i]=true);
+
+  const byCell=Array.from({length:N},()=>[]);
+  for(let p=0;p<PIECES.length;p++)
+    for(const pl of PLACEMENTS[p])
+      if(((pl.lo&holeLo)|(pl.hi&holeHi))===0) byCell[pl.anchor].push({p, ...pl});
+  // 稀少块优先（剩余摆放少的块先试），更快遇到可行解
+  const mob=PLACEMENTS.map((list,p)=>{
+    let c=0; for(const pl of list) if(((pl.lo&holeLo)|(pl.hi&holeHi))===0) c++;
+    return c;
+  });
+  for(const arr of byCell) arr.sort((a,b)=>mob[a.p]-mob[b.p]);
+
+  const fail=new Map();                 // occKey -> Set(已用块组合)
+  const board=new Int8Array(N).fill(-1);
+  const occArr=new Uint8Array(N);       // 0/1 覆盖标记（供洪水填充）
+  const solutions=[];
+  const t0=performance.now();
+  let nodes=0, truncated=false, usedNow=0;
+
+  function regionsOk(){
+    // 对每个空白连通区，面积必须是剩余拼块面积的子集和
+    const sums=SUMS[usedNow];
+    const seen=new Uint8Array(N);
+    const stack=[];
+    for(let i=0;i<N;i++){
+      if(occArr[i]||isHole[i]||seen[i]) continue;
+      let size=0; stack.push(i); seen[i]=1;
+      while(stack.length){
+        const v=stack.pop(); size++;
+        for(const u of NEIGH[v]){
+          if(occArr[u]||isHole[u]||seen[u]) continue;
+          seen[u]=1; stack.push(u);
+        }
+      }
+      if(!((sums>>BigInt(size))&1n)) return false;
+    }
+    return true;
+  }
+
+  function dfs(lo, hi, used, placed){
+    if(truncated) return;
+    if(placed===TOTAL){
+      solutions.push(board.slice());
+      if(onPartial && (solutions.length===1 || solutions.length%20===0)) onPartial(solutions);
+      truncated=solutions.length>=limit; return;
+    }
+    if(((++nodes)&2047)===0 && performance.now()-t0>deadlineMs){ truncated=true; return; }
+    // 找到第一个 空白且非露出 的格子
+    let cell=-1;
+    for(let i=0;i<N;i++){
+      if(!occArr[i] && !isHole[i]){ cell=i; break; }
+    }
+    const key=lo*33554432+hi;           // 2^25 进制，50 格精确编码
+    let failSet=fail.get(key);
+    if(failSet && failSet.has(used)) return;
+    usedNow=used;
+    if(!regionsOk()){
+      if(!failSet){ failSet=new Set(); fail.set(key,failSet); }
+      failSet.add(used); return;
+    }
+    const cands=byCell[cell];
+    for(let k=0;k<cands.length;k++){
+      const pl=cands[k];
+      if((used>>pl.p)&1) continue;
+      if((lo&pl.lo)|(hi&pl.hi)) continue;   // 与已放的块重叠（后面的格子可能已被先前块占住）
+      for(const ci of pl.idxs) board[ci]=pl.p, occArr[ci]=1;
+      dfs(lo|pl.lo, hi|pl.hi, used|(1<<pl.p), placed+PSIZE[pl.p]);
+      for(const ci of pl.idxs) board[ci]=-1, occArr[ci]=0;
+      if(truncated) return;
+    }
+    if(!failSet){ failSet=new Set(); fail.set(key,failSet); }
+    failSet.add(used);
+  }
+  dfs(0,0,0,0);
+  return {solutions, holes, ms:performance.now()-t0, truncated, nodes};
+}
+
+</script>
+<script>
+'use strict';
+/* ================= 轮廓描边（带圆角的多连方外形） ================= */
+function traceLoops(cellKeys){
+  const S=new Set(cellKeys);
+  const segs=[];
+  for(const key of S){
+    const [r,c]=key.split(',').map(Number);
+    if(!S.has((r-1)+','+c)) segs.push([[c,r],[c+1,r]]);
+    if(!S.has(r+','+(c+1))) segs.push([[c+1,r],[c+1,r+1]]);
+    if(!S.has((r+1)+','+c)) segs.push([[c+1,r+1],[c,r+1]]);
+    if(!S.has(r+','+(c-1))) segs.push([[c,r+1],[c,r]]);
+  }
+  const from=new Map();
+  segs.forEach((s,i)=>{
+    const k=s[0].join(',');
+    if(!from.has(k)) from.set(k,[]);
+    from.get(k).push(i);
+  });
+  const used=new Array(segs.length).fill(false);
+  const loops=[];
+  for(let i=0;i<segs.length;i++){
+    if(used[i]) continue;
+    used[i]=true;
+    const startKey=segs[i][0].join(',');
+    const loop=[segs[i][0], segs[i][1]];
+    let cur=segs[i][1].join(',');
+    while(cur!==startKey){
+      const cands=(from.get(cur)||[]).filter(j=>!used[j]);
+      if(!cands.length) break;               // 不应发生
+      const j=cands[0]; used[j]=true;
+      cur=segs[j][1].join(',');
+      if(cur!==startKey) loop.push(segs[j][1]);   // 闭合点交给 Z，避免重复点
+    }
+    loops.push(loop);
+  }
+  return loops;
+}
+function loopsToPath(loops, unit, ox, oy, rad){
+  let d='';
+  for(const loop of loops){
+    const P=loop.map(([x,y])=>[ox+x*unit, oy+y*unit]);
+    const n=P.length;
+    for(let i=0;i<n;i++){
+      const p0=P[(i+n-1)%n], p1=P[i], p2=P[(i+1)%n];
+      const v1=[p1[0]-p0[0],p1[1]-p0[1]], v2=[p2[0]-p1[0],p2[1]-p1[1]];
+      const l1=Math.hypot(v1[0],v1[1])||1, l2=Math.hypot(v2[0],v2[1])||1;
+      const r=Math.min(rad,l1/2,l2/2);
+      const ax=p1[0]-v1[0]/l1*r, ay=p1[1]-v1[1]/l1*r;
+      const bx=p1[0]+v2[0]/l2*r, by=p1[1]+v2[1]/l2*r;
+      d+=(i===0?`M${ax.toFixed(2)},${ay.toFixed(2)}`:`L${ax.toFixed(2)},${ay.toFixed(2)}`);
+      d+=`Q${p1[0].toFixed(2)},${p1[1].toFixed(2)} ${bx.toFixed(2)},${by.toFixed(2)}`;
+    }
+    d+='Z';
+  }
+  return d;
+}
+
+/* ================= 渲染 ================= */
+const CELL=64, PAD=14, UNIT=CELL, RAD=9;
+const W=PAD*2+COLS*CELL, H=PAD*2+ROWS*CELL;
+const SVGNS='http://www.w3.org/2000/svg';
+
+let cur={y:0,m:1,d:1, sols:[], holes:[], idx:0, truncated:false, ms:0, pending:false};
+const cache=new Map();
+const chkLabels=document.getElementById('chkLabels');
+const chkGrid=document.getElementById('chkGrid');
+chkLabels.addEventListener('change',()=>render());
+chkGrid.addEventListener('change',()=>render());
+
+function getDark(){ return matchMedia('(prefers-color-scheme: dark)').matches; }
+
+function render(){
+  const host=document.getElementById('boardHost');
+  host.textContent='';
+  if(!cur.sols.length){
+    const el=document.createElement('div'); el.className='err';
+    el.textContent=cur.pending ? '正在计算拼法…' : '这一天没有找到拼法（不应出现，请反馈日期）';
+    host.appendChild(el);
+    document.getElementById('solInfo').textContent='…';
+    document.getElementById('meta').textContent='';
+    document.getElementById('btnPrevSol').disabled=true;
+    document.getElementById('btnNextSol').disabled=true;
+    document.getElementById('btnRand').disabled=true;
+    return;
+  }
+  const sol=cur.sols[cur.idx];
+  const dark=getDark();
+  const boardFill = dark? '#332c22' : '#f1e7d2';
+  const boardEdge = dark? '#55483a' : '#c9b78f';
+  const cellInk   = dark? '#d8cdb8' : '#4a4032';
+
+  const svg=document.createElementNS(SVGNS,'svg');
+  svg.setAttribute('viewBox',`0 0 ${W} ${H}`);
+  svg.setAttribute('width',W); svg.setAttribute('height',H);
+  svg.setAttribute('xmlns',SVGNS);
+
+  // 棋盘底 + 外轮廓
+  const allKeys=validRC.map(([r,c])=>r+','+c);
+  const boardPath=loopsToPath(traceLoops(allKeys),UNIT,PAD,PAD,RAD);
+  addEl(svg,'path',{d:boardPath,fill:boardFill,stroke:boardEdge,'stroke-width':2,'fill-rule':'evenodd'});
+
+  // 挂孔
+  addEl(svg,'circle',{cx:PAD+6.5*CELL, cy:PAD+0.5*CELL, r:CELL*0.24, fill:'none', stroke:boardEdge,'stroke-width':3});
+
+  // 每块拼块
+  const byPiece=PIECES.map(()=>[]);
+  for(let i=0;i<N;i++) if(sol[i]>=0) byPiece[sol[i]].push(i);
+  byPiece.forEach((idxs,p)=>{
+    if(!idxs.length) return;
+    const keys=idxs.map(i=>validRC[i][0]+','+validRC[i][1]);
+    const d=loopsToPath(traceLoops(keys),UNIT,PAD,PAD,RAD);
+    addEl(svg,'path',{d,fill:PCOLORS[p],stroke:'rgba(0,0,0,.28)','stroke-width':1.6,'fill-rule':'evenodd','stroke-linejoin':'round'});
+  });
+
+  // 块内分隔线（可选）
+  if(chkGrid.checked){
+    for(let i=0;i<N;i++){
+      if(sol[i]<0) continue;
+      const [r,c]=validRC[i];
+      addEl(svg,'rect',{x:PAD+c*CELL, y:PAD+r*CELL, width:CELL, height:CELL,
+        fill:'none', stroke:'rgba(255,255,255,.16)','stroke-width':1});
+    }
+  }
+
+  // 格子文字
+  for(let i=0;i<N;i++){
+    const [r,c]=validRC[i];
+    const cx=PAD+c*CELL+CELL/2, cy=PAD+r*CELL+CELL/2;
+    const exposed=sol[i]<0;
+    const txt=labelOfIdx(i);
+    if(exposed){
+      addEl(svg,'rect',{x:PAD+c*CELL+2.5, y:PAD+r*CELL+2.5, width:CELL-5, height:CELL-5, rx:8,
+        fill:'none', stroke:cellInk,'stroke-width':1.4,'stroke-dasharray':'4 3', opacity:.55});
+      addText(svg,cx,cy,txt,exposed?19:13, exposed?700:400, exposed? cellInk : 'rgba(255,255,255,.62)');
+    }else if(chkLabels.checked){
+      addText(svg,cx,cy,txt,13,400,'rgba(255,255,255,.55)');
+    }
+  }
+  host.appendChild(svg);
+
+  document.getElementById('solInfo').textContent=`第 ${cur.idx+1} / ${cur.sols.length} 种`;
+  const dt=new Date(cur.y,cur.m-1,cur.d);
+  const week='星期'+WD_TXT[dt.getDay()];
+  document.getElementById('dateline').innerHTML=
+    `${cur.y} 年 ${cur.m} 月 ${cur.d} 日 · ${week}<small>露出：${cur.m}月 / ${cur.d}日 / ${WD_TXT[dt.getDay()]}${cur.pending?' · 统计全部拼法中…':''}</small>`;
+  document.getElementById('meta').textContent= cur.pending
+    ? `已找到 ${cur.sols.length} 种，正在统计当天全部拼法…`
+    : `共 ${cur.sols.length}${cur.truncated?'+':''} 种拼法（允许旋转与翻面）· 耗时 ${cur.ms.toFixed(0)} ms`;
+  document.getElementById('btnPrevSol').disabled = cur.sols.length<2;
+  document.getElementById('btnNextSol').disabled = cur.sols.length<2;
+  document.getElementById('btnRand').disabled    = cur.sols.length<2;
+}
+function addEl(parent,tag,attrs){
+  const el=document.createElementNS(SVGNS,tag);
+  for(const k in attrs) el.setAttribute(k,attrs[k]);
+  parent.appendChild(el); return el;
+}
+function addText(svg,x,y,txt,size,weight,fill){
+  const t=addEl(svg,'text',{x,y,fill,'font-size':size,'font-weight':weight,
+    'text-anchor':'middle','dominant-baseline':'central',
+    'font-family':'-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif'});
+  t.textContent=txt; return t;
+}
+
+/* ================= 交互 ================= */
+const dateInput=document.getElementById('dateInput');
+function pad2(n){return String(n).padStart(2,'0')}
+let curKey='', jobSeq=0, worker=null, workerFailed=false, pendingReq=null;
+
+function onPartialMsg(m){
+  if(m.job!==jobSeq) return;
+  cur.pending=true;
+  cur.sols=m.sols.map(a=>Int8Array.from(a));
+  cur.idx=0; cur.truncated=false; cur.ms=0;
+  render();
+}
+function onDone(job,pack){
+  if(job!==jobSeq) return;
+  const store={sols:pack.solutions, holes:pack.holes, truncated:pack.truncated, ms:pack.ms, pending:false};
+  cache.set(curKey,store);
+  cur.pending=false;
+  Object.assign(cur,store,{idx:0});
+  render();
+}
+function syncFallback(){
+  if(!pendingReq) return;
+  const {job,y,m,d}=pendingReq;
+  setTimeout(()=>{
+    if(job!==jobSeq) return;
+    const r=solveDate(y,m,d,1000,5000);
+    onDone(job,{solutions:r.solutions,holes:r.holes,ms:r.ms,truncated:r.truncated});
+  },16);
+}
+function ensureWorker(){
+  if(workerFailed) return null;
+  if(worker) return worker;
+  try{
+    const glue=`
+      self.onmessage=function(e){
+        const j=e.data;
+        const r=solveDate(j.y,j.m,j.d,j.limit,j.deadline,function(sols){
+          if(sols.length===1) self.postMessage({job:j.job,phase:'partial',sols:sols.map(a=>Array.from(a))});
+        });
+        self.postMessage({job:j.job,phase:'done',solutions:r.solutions.map(a=>Array.from(a)),
+          holes:r.holes,ms:r.ms,truncated:r.truncated});
+      };`;
+    const blob=new Blob([document.getElementById('engine-src').textContent, glue],{type:'text/javascript'});
+    worker=new Worker(URL.createObjectURL(blob));
+    worker.onmessage=e=>{
+      const m=e.data;
+      if(m.phase==='partial') onPartialMsg(m);
+      else onDone(m.job,{solutions:m.solutions,holes:m.holes,ms:m.ms,truncated:m.truncated});
+    };
+    worker.onerror=()=>{
+      workerFailed=true;
+      if(worker){ worker.terminate(); worker=null; }
+      syncFallback();
+    };
+    return worker;
+  }catch(err){ workerFailed=true; return null; }
+}
+function loadDate(y,m,d){
+  curKey=`${y}-${pad2(m)}-${pad2(d)}`;
+  cur.y=y; cur.m=m; cur.d=d; cur.idx=0;
+  dateInput.value=curKey;
+  if(cache.has(curKey)){
+    Object.assign(cur,cache.get(curKey),{y,m,d,idx:0});
+    render(); return;
+  }
+  const job=++jobSeq;
+  pendingReq={job,y,m,d};
+  cur.pending=true; cur.sols=[]; cur.truncated=false; cur.ms=0;
+  render();
+  if(worker){ worker.terminate(); worker=null; }   // 取消上一次计算
+  const wk=ensureWorker();
+  if(wk) wk.postMessage({job,y,m,d,limit:1000,deadline:5000});
+  else syncFallback();
+}
+function shiftDay(n){
+  const dt=new Date(cur.y,cur.m-1,cur.d+n);
+  loadDate(dt.getFullYear(),dt.getMonth()+1,dt.getDate());
+}
+dateInput.addEventListener('change',()=>{
+  const v=dateInput.value; if(!v) return;
+  const [y,m,d]=v.split('-').map(Number);
+  loadDate(y,m,d);
+});
+document.getElementById('btnToday').addEventListener('click',()=>{
+  const t=new Date();
+  loadDate(t.getFullYear(),t.getMonth()+1,t.getDate());
+});
+document.getElementById('btnPrevDay').addEventListener('click',()=>shiftDay(-1));
+document.getElementById('btnNextDay').addEventListener('click',()=>shiftDay(1));
+document.getElementById('btnPrevSol').addEventListener('click',()=>{cur.idx=(cur.idx-1+cur.sols.length)%cur.sols.length; render();});
+document.getElementById('btnNextSol').addEventListener('click',()=>{cur.idx=(cur.idx+1)%cur.sols.length; render();});
+document.getElementById('btnRand').addEventListener('click',()=>{
+  if(cur.sols.length<2) return;
+  let i; do{ i=Math.floor(Math.random()*cur.sols.length); }while(i===cur.idx);
+  cur.idx=i; render();
+});
+document.addEventListener('keydown',e=>{
+  if(e.target===dateInput) return;
+  if(e.key==='ArrowLeft'){cur.idx=(cur.idx-1+cur.sols.length)%cur.sols.length; render();}
+  if(e.key==='ArrowRight'){cur.idx=(cur.idx+1)%cur.sols.length; render();}
+});
+document.getElementById('btnPng').addEventListener('click',()=>{
+  const svg=document.querySelector('#boardHost svg');
+  if(!svg) return;
+  const xml=new XMLSerializer().serializeToString(svg);
+  const img=new Image();
+  img.onload=()=>{
+    const scale=2, cv=document.createElement('canvas');
+    cv.width=W*scale; cv.height=H*scale;
+    const ctx=cv.getContext('2d');
+    ctx.fillStyle=getDark()?'#211d18':'#ffffff';
+    ctx.fillRect(0,0,cv.width,cv.height);
+    ctx.drawImage(img,0,0,cv.width,cv.height);
+    cv.toBlob(b=>{
+      const a=document.createElement('a');
+      a.href=URL.createObjectURL(b);
+      a.download=`每日拼图-${cur.y}${pad2(cur.m)}${pad2(cur.d)}-拼法${cur.idx+1}.png`;
+      a.click();
+      setTimeout(()=>URL.revokeObjectURL(a.href),3000);
+    });
+  };
+  img.src='data:image/svg+xml;charset=utf-8,'+encodeURIComponent(xml);
+});
+
+/* ================= 自检 + 启动 ================= */
+(function selfTest(){
+  // 结构校验：47 格覆盖、3 格露出、无重叠、露出格与日期对应
+  const t=new Date();
+  const r=solveDate(t.getFullYear(),t.getMonth()+1,t.getDate(),5,3000);
+  const s=r.solutions[0];
+  console.assert(s && s.filter(v=>v>=0).length===TOTAL, '覆盖数应为47');
+  console.assert(r.holes.every(i=>s[i]===-1), '露出格未被覆盖');
+})();
+loadDate(new Date().getFullYear(), new Date().getMonth()+1, new Date().getDate());
+
+/* 调试接口（可在控制台使用） */
+window.__cal={
+  solve:(y,m,d)=>{const r=solveDate(y,m,d);return {count:r.solutions.length,ms:+r.ms.toFixed(1),holes:r.holes};},
+  labelOfIdx, cellsForDate
+};
+</script>
+</body>
+</html>
